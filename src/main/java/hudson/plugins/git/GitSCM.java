@@ -4,6 +4,7 @@ import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
 import com.cloudbees.plugins.credentials.domains.URIRequirementBuilder;
+import com.google.common.base.Strings;
 import com.google.common.collect.Iterables;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
@@ -78,6 +79,7 @@ import hudson.plugins.git.browser.GithubWeb;
 import static hudson.scm.PollingResult.*;
 import hudson.util.IOUtils;
 import hudson.util.LogTaskListener;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -119,6 +121,9 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     public static final String GIT_COMMIT = "GIT_COMMIT";
     public static final String GIT_PREVIOUS_COMMIT = "GIT_PREVIOUS_COMMIT";
     public static final String GIT_PREVIOUS_SUCCESSFUL_COMMIT = "GIT_PREVIOUS_SUCCESSFUL_COMMIT";
+
+    public String summary;
+    private static Map<String, GitStatus.NotifyCommitInfo> notifyCommitIPCount;
 
     /**
      * All the configured extensions attached to this.
@@ -887,8 +892,10 @@ public class GitSCM extends GitSCMBackwardCompatibility {
                 BuildData parentBuildData = getBuildData(parentBuild);
                 if (parentBuildData != null) {
                     Build lastBuild = parentBuildData.lastBuild;
-                    if (lastBuild!=null)
+                    if (lastBuild!=null) {
                         candidates = Collections.singleton(lastBuild.getMarked());
+                        summary += "\nThis build was a matrix run, it may have multiple configurations";
+                    }
                 }
             }
         }
@@ -898,6 +905,8 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             final RevisionParameterAction rpa = build.getAction(RevisionParameterAction.class);
             if (rpa != null) {
                 candidates = Collections.singleton(rpa.toRevision(git));
+                summary += "\nThis build is not a matrix run, there is only one configuration"
+                		+ "\nThere was a build parameter forcing this revision to be built";
             }
         }
 
@@ -907,6 +916,10 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             final BuildChooserContext context = new BuildChooserContextImpl(build.getParent(), build, environment);
             candidates = getBuildChooser().getCandidateRevisions(
                     false, singleBranch, git, listener, buildData, context);
+
+            summary += "\nThis build is not a matrix run, there is only one configuration"
+            		+ "\nThere was no build parameter forcing this revision to be built"
+            		+ "\nThe only branch to choose from is " + singleBranch;
         }
 
         if (candidates.isEmpty()) {
@@ -998,9 +1011,18 @@ public class GitSCM extends GitSCMBackwardCompatibility {
 
         BuildData previousBuildData = getBuildData(build.getPreviousBuild());   // read only
         BuildData buildData = copyBuildData(build.getPreviousBuild());
+        if(summary != null && summary.contains("notify commit url")) {
+        	buildData.trigger = summary;
+        }
+        else {
+        	buildData.trigger = "";
+        }
         build.addAction(buildData);
-        if (VERBOSE && buildData.lastBuild != null) {
-            listener.getLogger().println("Last Built Revision: " + buildData.lastBuild.revision);
+        if (buildData.lastBuild != null) {
+        	appendSummary("\nThe last build revision was       " + buildData.lastBuild.revision);
+        	if(VERBOSE){
+        		listener.getLogger().println("Last Built Revision: " + buildData.lastBuild.revision);
+        	}
         }
 
         EnvVars environment = build.getEnvironment(listener);
@@ -1018,6 +1040,12 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         if (branch!=null) { // null for a detached HEAD
             environment.put(GIT_BRANCH, getBranchName(branch));
         }
+
+        summary += "\nMarked commit is                  " + revToBuild.marked.getSha1String();
+        summary += "\nCommit to build is                " + environment.get(GIT_COMMIT);
+        summary += "\nHead branch is                    " + environment.get(GIT_BRANCH);
+        summary += "\nPrevious Git commit is            " + environment.get(GIT_PREVIOUS_COMMIT);
+        summary += "\nPrevious successful Git commit is " + environment.get(GIT_PREVIOUS_SUCCESSFUL_COMMIT);
 
         listener.getLogger().println("Checking out " + revToBuild.revision);
 
@@ -1043,6 +1071,9 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         for (GitSCMExtension ext : extensions) {
             ext.onCheckoutCompleted(this, build, git,listener);
         }
+
+        listener.getLogger().println(summary + "\n");
+        summary = "\n";
     }
 
     /**
@@ -1114,6 +1145,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
                 // this is the first time we are building this branch, so there's no base line to compare against.
                 // if we force the changelog, it'll contain all the changes in the repo, which is not what we want.
                 listener.getLogger().println("First time build. Skipping changelog.");
+                summary += "\nThis is the first time this branch is being built";
             } else {
                 changelog.to(out).max(MAX_CHANGELOG).execute();
                 executed = true;
@@ -1615,6 +1647,36 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         Items.XSTREAM.registerConverter(new RemoteConfigConverter(Items.XSTREAM));
         Items.XSTREAM.alias("org.spearce.jgit.transport.RemoteConfig", RemoteConfig.class);
     }
+
+    public void appendSummary(String log) {
+    	if(summary == null)
+    		summary = "\n";
+    	summary += log;
+    }
+
+	public void tallyIPAddress(String ip, String hostname, String sha1, String[] branches) {
+		Map<String, GitStatus.NotifyCommitInfo> data = getNotifyCommitData();
+		GitStatus.NotifyCommitInfo info = data.get(ip);
+		if(info == null) {
+			info = new GitStatus.NotifyCommitInfo(ip, hostname);
+		}
+		info.hit();
+		if(!Strings.isNullOrEmpty(sha1)) {
+			info.hitHash(sha1);
+		}
+		if(branches.length > 0) {
+			info.hitBranches(branches);
+		}
+		data.put(ip, info);
+	}
+
+	@Exported
+	public static Map<String, GitStatus.NotifyCommitInfo> getNotifyCommitData() {
+		if(notifyCommitIPCount == null) {
+			notifyCommitIPCount = new ConcurrentHashMap<String, GitStatus.NotifyCommitInfo>();
+		}
+		return notifyCommitIPCount;
+	}
 
     private static final Logger LOGGER = Logger.getLogger(GitSCM.class.getName());
 

@@ -7,8 +7,11 @@ import hudson.model.Action;
 import hudson.model.Api;
 import hudson.model.Run;
 import hudson.plugins.git.Branch;
+import hudson.plugins.git.GitSCM;
+import hudson.plugins.git.GitStatus;
 import hudson.plugins.git.Revision;
 import hudson.plugins.git.UserRemoteConfig;
+
 import org.eclipse.jgit.lib.ObjectId;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
@@ -52,6 +55,11 @@ public class BuildData implements Action, Serializable, Cloneable {
      * The URLs that have been referenced.
      */
     public Set<String> remoteUrls = new HashSet<String>();
+    
+    /**
+     * The cause for starting the build
+     */
+    public String trigger;
 
     public BuildData() {
     }
@@ -182,6 +190,16 @@ public class BuildData implements Action, Serializable, Cloneable {
     @Exported
     public  Set<String> getRemoteUrls() {
         return remoteUrls;
+    }
+
+    @Exported
+    public Map<String, String> getNotifyCommitData() {
+		Map<String, String> jsonData = new HashMap<String, String>();
+		Map<String, GitStatus.NotifyCommitInfo> data = GitSCM.getNotifyCommitData();
+		for(Map.Entry<String, GitStatus.NotifyCommitInfo> entry : data.entrySet()) {
+			jsonData.put(entry.getKey(), entry.getValue().toJson());
+		}
+		return jsonData;
     }
 
     public boolean hasBeenReferenced(String remoteUrl) {

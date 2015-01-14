@@ -10,26 +10,38 @@ import hudson.model.Cause;
 import hudson.model.CauseAction;
 import hudson.model.Item;
 import hudson.model.UnprotectedRootAction;
+import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.extensions.impl.IgnoreNotifyCommit;
 import hudson.scm.SCM;
 import hudson.security.ACL;
 import hudson.triggers.SCMTrigger;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
+import java.util.Map;
+
 import javax.servlet.ServletException;
+
 import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
 import static javax.servlet.http.HttpServletResponse.SC_OK;
 import jenkins.model.Jenkins;
 import jenkins.triggers.SCMTriggerItem;
+
+import net.sf.json.*;
+
 import org.acegisecurity.context.SecurityContext;
 import org.acegisecurity.context.SecurityContextHolder;
 import org.apache.commons.lang.StringUtils;
+
 import static org.apache.commons.lang.StringUtils.isNotEmpty;
+
 import org.eclipse.jgit.transport.RemoteConfig;
 import org.eclipse.jgit.transport.URIish;
 import org.kohsuke.stapler.*;
@@ -40,6 +52,7 @@ import org.kohsuke.stapler.*;
  */
 @Extension
 public class GitStatus extends AbstractModelObject implements UnprotectedRootAction {
+
     public String getDisplayName() {
         return "Git";
     }
@@ -195,6 +208,11 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
             // this is safe because when we actually schedule a build, it's a build that can
             // happen at some random time anyway.
             SecurityContext old = ACL.impersonate(ACL.SYSTEM);
+
+            // TESLA addition to expose via API
+            String clientIP = Stapler.getCurrentRequest().getRemoteAddr();
+            String clientName = Stapler.getCurrentRequest().getRemoteHost();
+
             try {
 
                 boolean scmFound = false,
@@ -210,6 +228,9 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
                         }
                         GitSCM git = (GitSCM) scm;
                         scmFound = true;
+
+                        git.appendSummary("\nTriggered by notify commit url.\n");
+                        git.tallyIPAddress(clientIP, clientName, sha1, branches);
 
                         for (RemoteConfig repository : git.getRepositories()) {
                             boolean repositoryMatches = false,
@@ -249,13 +270,19 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
 
                             if (!(project instanceof AbstractProject && ((AbstractProject) project).isDisabled())) {
                                 if (isNotEmpty(sha1)) {
-                                    LOGGER.info("Scheduling " + project.getFullDisplayName() + " to build commit " + sha1);
+                                	String msg = " to build commit " 
+                                			+ sha1 + ". "+ addBranchLog(branches);
+                                	git.appendSummary(project.getFullDisplayName() + " was scheduled " + msg);
+                                    LOGGER.info("Scheduling " + project.getFullDisplayName() + msg);
                                     scmTriggerItem.scheduleBuild2(scmTriggerItem.getQuietPeriod(),
                                             new CauseAction(new CommitHookCause(sha1)),
                                             new RevisionParameterAction(sha1));
                                     result.add(new ScheduledResponseContributor(project));
                                 } else if (trigger != null) {
-                                    LOGGER.info("Triggering the polling of " + project.getFullDisplayName());
+                                	String msg = " with no SHA-1 specified. " + addBranchLog(branches);
+                                	git.appendSummary(project.getFullDisplayName() + " was triggered by polling " + msg);
+                                    LOGGER.info("Triggering the polling of " + project.getFullDisplayName()
+                                			+ msg);
                                     trigger.run();
                                     result.add(new PollingScheduledResponseContributor(project));
                                     break SCMS; // no need to trigger the same project twice, so do not consider other GitSCMs in it
@@ -263,7 +290,6 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
                             }
                             break;
                         }
-
                     }
                 }
                 if (!scmFound) {
@@ -278,6 +304,20 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
             } finally {
                 SecurityContextHolder.setContext(old);
             }
+        }
+        
+        private String addBranchLog(String... branches) {
+        	String msg = "";
+        	if(branches.length == 0) {
+        		msg += "\nNo branch specified in notify commit url";
+        	}
+        	else {
+        		msg += "\nNotify commit url contained branches:";
+        		for(String branch : branches) {
+        			msg += "\n" + branch;
+        		}
+        	}
+        	return msg;
         }
 
         /**
@@ -391,6 +431,54 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
         public String getShortDescription() {
             return "commit notification " + sha1;
         }
+    }
+
+	public static class NotifyCommitInfo {
+		private final String ip;
+		private final String hostname;
+		private AtomicInteger totalHits;
+		private Map<String, Integer> hashHitMap;
+		private Map<String, Integer> branchHitMap;
+
+		public NotifyCommitInfo(String ip, String hostname) {
+			this.ip = ip;
+			this.hostname = hostname;
+			totalHits = new AtomicInteger();
+			hashHitMap = new ConcurrentHashMap<String, Integer>();
+			branchHitMap = new ConcurrentHashMap<String, Integer>();
+		}
+
+		public void hit() {
+			totalHits.incrementAndGet();
+		}
+
+		public void hitHash(String hash) {
+			Integer count = hashHitMap.get(hash);
+			if(count == null) {
+				count = 0;
+			}
+			hashHitMap.put(hash, ++count);
+		}
+
+		public void hitBranches(String[] branches) {
+			for(String branch : branches) {
+				Integer count = branchHitMap.get(branch);
+				if(count == null) {
+					count = 0;
+				}
+				branchHitMap.put(branch, ++count);
+			}
+		}
+
+		public String toJson() {
+			JSONObject json = new JSONObject();
+			json.put("hashHitMap", JSONObject.fromObject(hashHitMap));
+			json.put("branchHitMap", JSONObject.fromObject(branchHitMap));
+			json.put("totalHits", totalHits.get());
+			json.put("ipAddress", ip);
+			json.put("hostname", hostname);
+			return json.toString();
+		}
     }
 
     private static final Logger LOGGER = Logger.getLogger(GitStatus.class.getName());
