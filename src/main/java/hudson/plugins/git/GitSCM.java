@@ -1044,6 +1044,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             throw new IOException("Could not checkout " + revToBuild.revision.getSha1String(), e);
         }
         
+        // This  is a comment
         summary += "\nThe revision checked out from SCM is " + revToBuild.revision;
 
         build.addAction(new GitTagAction(build, workspace, revToBuild.revision));
@@ -1059,10 +1060,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         
         // Print final summary
         listener.getLogger().println(summary);
-<<<<<<< HEAD
-=======
         // Clear summary for next build because it is a static variable
->>>>>>> b3
         summary = "";
     }
 
