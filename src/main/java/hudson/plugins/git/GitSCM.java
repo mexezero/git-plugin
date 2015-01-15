@@ -892,7 +892,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
                     Build lastBuild = parentBuildData.lastBuild;
                     if (lastBuild!=null) {
                         candidates = Collections.singleton(lastBuild.getMarked());
-                        summary += "This build was a matrix run, it may have multiple configurations";
+                        summary += "\nThis build was a matrix run, it may have multiple configurations";
                     }
                 }
             }
@@ -903,7 +903,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             final RevisionParameterAction rpa = build.getAction(RevisionParameterAction.class);
             if (rpa != null) {
                 candidates = Collections.singleton(rpa.toRevision(git));
-                summary += "There was a build parameter forcing this revision to be built";
+                summary += "\nThere was a build parameter forcing this revision to be built";
             }
         }
 
@@ -914,7 +914,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             candidates = getBuildChooser().getCandidateRevisions(
                     false, singleBranch, git, listener, buildData, context);
             
-            summary += "This was the only branch to choose from";
+            summary += "\nThe only branch to choose from is " + singleBranch;
         }
 
         if (candidates.isEmpty()) {
@@ -1008,7 +1008,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         BuildData buildData = copyBuildData(build.getPreviousBuild());
         build.addAction(buildData);
         if (buildData.lastBuild != null) {
-        	summary += "\nThe last build revision was " + buildData.lastBuild.revision;
+        	summary += "\nThe last build revision was       " + buildData.lastBuild.revision;
         	if(VERBOSE){
         		listener.getLogger().println("Last Built Revision: " + buildData.lastBuild.revision);
         	}
@@ -1030,10 +1030,10 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             environment.put(GIT_BRANCH, getBranchName(branch));
         }
         
-        summary += "\nMarked commit is " + revToBuild.marked.getSha1String();
-        summary += "\nCommit to build is " + environment.get(GIT_COMMIT);
-        summary += "\nHead branch is " + environment.get(GIT_BRANCH);
-        summary += "\nPrevious Git commit is " + environment.get(GIT_PREVIOUS_COMMIT);
+        summary += "\nMarked commit is                  " + revToBuild.marked.getSha1String();
+        summary += "\nCommit to build is                " + environment.get(GIT_COMMIT);
+        summary += "\nHead branch is                    " + environment.get(GIT_BRANCH);
+        summary += "\nPrevious Git commit is            " + environment.get(GIT_PREVIOUS_COMMIT);
         summary += "\nPrevious successful Git commit is " + environment.get(GIT_PREVIOUS_SUCCESSFUL_COMMIT);
 
         listener.getLogger().println("Checking out " + revToBuild.revision);
@@ -1049,9 +1049,6 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             // Rethrow IOException so the retry will be able to catch it
             throw new IOException("Could not checkout " + revToBuild.revision.getSha1String(), e);
         }
-        
-        // 
-        summary += "\nThe revision checked out from SCM is " + revToBuild.revision;
 
         build.addAction(new GitTagAction(build, workspace, revToBuild.revision));
 
