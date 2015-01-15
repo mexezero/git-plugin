@@ -1058,7 +1058,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             ext.onCheckoutCompleted(this, build, git,listener);
         }
         
-        // Print final summary
+        // Print final summary and clear
         listener.getLogger().println(summary);
         summary = "";
     }
