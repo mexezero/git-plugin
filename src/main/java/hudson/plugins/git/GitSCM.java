@@ -1057,7 +1057,9 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             ext.onCheckoutCompleted(this, build, git,listener);
         }
         
+        // Print final summary
         listener.getLogger().println(summary);
+        summary = "";
     }
 
     /**
@@ -1129,6 +1131,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
                 // this is the first time we are building this branch, so there's no base line to compare against.
                 // if we force the changelog, it'll contain all the changes in the repo, which is not what we want.
                 listener.getLogger().println("First time build. Skipping changelog.");
+                summary += "\nThis is the first time this branch is being built";
             } else {
                 changelog.to(out).max(MAX_CHANGELOG).execute();
                 executed = true;
