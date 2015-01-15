@@ -120,7 +120,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     public static final String GIT_PREVIOUS_COMMIT = "GIT_PREVIOUS_COMMIT";
     public static final String GIT_PREVIOUS_SUCCESSFUL_COMMIT = "GIT_PREVIOUS_SUCCESSFUL_COMMIT";
     
-    private String summary = "";
+    private static String summary = "";
 
     /**
      * All the configured extensions attached to this.
@@ -1002,7 +1002,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         BuildData buildData = copyBuildData(build.getPreviousBuild());
         build.addAction(buildData);
         if (buildData.lastBuild != null) {
-        	summary += "The last build revision was " + buildData.lastBuild.revision;
+        	summary += "\nThe last build revision was " + buildData.lastBuild.revision;
         	if(VERBOSE){
         		listener.getLogger().println("Last Built Revision: " + buildData.lastBuild.revision);
         	}
@@ -1017,8 +1017,6 @@ public class GitSCM extends GitSCMBackwardCompatibility {
 
         retrieveChanges(build, git, listener);
         Build revToBuild = determineRevisionToBuild(build, buildData, environment, git, listener);
-
-        summary += "\nCommit to build is " + revToBuild.revision.getSha1String();
         
         environment.put(GIT_COMMIT, revToBuild.revision.getSha1String());
         Branch branch = Iterables.getFirst(revToBuild.revision.getBranches(),null);
@@ -1026,7 +1024,8 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             environment.put(GIT_BRANCH, getBranchName(branch));
         }
         
-        summary += "\nHead branch is " + branch.getName();
+        summary += "\nCommit to build is " + environment.get(GIT_COMMIT);
+        summary += "\nHead branch is " + environment.get(GIT_BRANCH);
 
         listener.getLogger().println("Checking out " + revToBuild.revision);
 
@@ -1041,6 +1040,8 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             // Rethrow IOException so the retry will be able to catch it
             throw new IOException("Could not checkout " + revToBuild.revision.getSha1String(), e);
         }
+        
+        summary += "\nThe revision checked out from SCM is " + revToBuild.revision;
 
         build.addAction(new GitTagAction(build, workspace, revToBuild.revision));
 
@@ -1154,6 +1155,8 @@ public class GitSCM extends GitSCMBackwardCompatibility {
                 if (prevSuccessfulCommit != null) {
                     env.put(GIT_PREVIOUS_SUCCESSFUL_COMMIT, prevSuccessfulCommit);
                 }
+                summary += "\nPrevious Git commit is " + env.get(GIT_PREVIOUS_COMMIT);
+                summary += "\nPrevious successful Git commit is " + env.get(GIT_PREVIOUS_SUCCESSFUL_COMMIT);
             }
 
             env.put(GIT_COMMIT, fixEmpty(rev.getSha1String()));
