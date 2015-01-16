@@ -121,7 +121,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     public static final String GIT_PREVIOUS_SUCCESSFUL_COMMIT = "GIT_PREVIOUS_SUCCESSFUL_COMMIT";
     
     // Summarizes procedure for human reading at end
-    private static String summary = "";
+    public static String summary = "\nGit Plugin Summary";
 
     /**
      * All the configured extensions attached to this.
@@ -903,7 +903,8 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             final RevisionParameterAction rpa = build.getAction(RevisionParameterAction.class);
             if (rpa != null) {
                 candidates = Collections.singleton(rpa.toRevision(git));
-                summary += "\nThere was a build parameter forcing this revision to be built";
+                summary += "\nThis build is not a matrix run, there is only one configuration"
+                		+ "\nThere was a build parameter forcing this revision to be built";
             }
         }
 
@@ -914,7 +915,9 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             candidates = getBuildChooser().getCandidateRevisions(
                     false, singleBranch, git, listener, buildData, context);
             
-            summary += "\nThe only branch to choose from is " + singleBranch;
+            summary += "\nThis build is not a matrix run, there is only one configuration"
+            		+ "\nThere was no build parameter forcing this revision to be built"
+            		+ "\nThe only branch to choose from is " + singleBranch;
         }
 
         if (candidates.isEmpty()) {
@@ -1062,8 +1065,8 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         }
         
         // Print final summary and clear
-        listener.getLogger().println(summary);
-        summary = "";
+        listener.getLogger().println(summary + "\n");
+        summary = "Git Plugin Summary";
     }
 
     /**
