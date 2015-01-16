@@ -1008,6 +1008,12 @@ public class GitSCM extends GitSCMBackwardCompatibility {
 
         BuildData previousBuildData = getBuildData(build.getPreviousBuild());   // read only
         BuildData buildData = copyBuildData(build.getPreviousBuild());
+        if(summary != null && summary.contains("notify commit url")) {
+        	buildData.trigger = "Notify commit url";
+        }
+        else {
+        	buildData.trigger = "";
+        }
         build.addAction(buildData);
         if (buildData.lastBuild != null) {
         	appendSummary("\nThe last build revision was       " + buildData.lastBuild.revision);
