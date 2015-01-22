@@ -260,7 +260,7 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
                             if (!(project instanceof AbstractProject && ((AbstractProject) project).isDisabled())) {
                                 if (isNotEmpty(sha1)) {
                                 	String msg = " to build commit " 
-                                			+ sha1 + ". " + addBranchLog(branches);
+                                			+ sha1 + ". "+ addBranchLog(branches);
                                 	git.appendSummary(project.getFullDisplayName() + " was scheduled " + msg);
                                     LOGGER.info("Scheduling " + project.getFullDisplayName() + msg);
                                     scmTriggerItem.scheduleBuild2(scmTriggerItem.getQuietPeriod(),
@@ -298,7 +298,7 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
         private String addBranchLog(String... branches) {
         	String msg = "";
         	if(branches.length == 0) {
-        		msg += " with no branch specified in notify commit url";
+        		msg += "\nNo branch specified in notify commit url";
         	}
         	else {
         		msg += "\nNotify commit url contained branches:";
