@@ -4,6 +4,7 @@ import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
 import com.cloudbees.plugins.credentials.domains.URIRequirementBuilder;
+import com.google.common.base.Strings;
 import com.google.common.collect.Iterables;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
@@ -78,6 +79,7 @@ import hudson.plugins.git.browser.GithubWeb;
 import static hudson.scm.PollingResult.*;
 import hudson.util.IOUtils;
 import hudson.util.LogTaskListener;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -121,6 +123,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     public static final String GIT_PREVIOUS_SUCCESSFUL_COMMIT = "GIT_PREVIOUS_SUCCESSFUL_COMMIT";
 
     public String summary;
+    private static Map<String, GitStatus.NotifyCommitInfo> notifyCommitIPCount;
 
     /**
      * All the configured extensions attached to this.
@@ -1650,6 +1653,30 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     		summary = "\n";
     	summary += log;
     }
+
+	public void tallyIPAddress(String ip, String hostname, String sha1, String[] branches) {
+		Map<String, GitStatus.NotifyCommitInfo> data = getNotifyCommitData();
+		GitStatus.NotifyCommitInfo info = data.get(ip);
+		if(info == null) {
+			info = new GitStatus.NotifyCommitInfo(ip, hostname);
+		}
+		info.hit();
+		if(!Strings.isNullOrEmpty(sha1)) {
+			info.hitHash(sha1);
+		}
+		if(branches.length > 0) {
+			info.hitBranches(branches);
+		}
+		data.put(ip, info);
+	}
+
+	@Exported
+	public static Map<String, GitStatus.NotifyCommitInfo> getNotifyCommitData() {
+		if(notifyCommitIPCount == null) {
+			notifyCommitIPCount = new ConcurrentHashMap<String, GitStatus.NotifyCommitInfo>();
+		}
+		return notifyCommitIPCount;
+	}
 
     private static final Logger LOGGER = Logger.getLogger(GitSCM.class.getName());
 

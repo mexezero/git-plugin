@@ -20,9 +20,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
+import java.util.Map;
 
 import javax.servlet.ServletException;
 
@@ -30,6 +33,8 @@ import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
 import static javax.servlet.http.HttpServletResponse.SC_OK;
 import jenkins.model.Jenkins;
 import jenkins.triggers.SCMTriggerItem;
+
+import net.sf.json.*;
 
 import org.acegisecurity.context.SecurityContext;
 import org.acegisecurity.context.SecurityContextHolder;
@@ -203,6 +208,11 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
             // this is safe because when we actually schedule a build, it's a build that can
             // happen at some random time anyway.
             SecurityContext old = ACL.impersonate(ACL.SYSTEM);
+
+            // TESLA addition to expose via API
+            String clientIP = Stapler.getCurrentRequest().getRemoteAddr();
+            String clientName = Stapler.getCurrentRequest().getRemoteHost();
+
             try {
 
                 boolean scmFound = false,
@@ -220,6 +230,7 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
                         scmFound = true;
 
                         git.appendSummary("\nTriggered by notify commit url.\n");
+                        git.tallyIPAddress(clientIP, clientName, sha1, branches);
 
                         for (RemoteConfig repository : git.getRepositories()) {
                             boolean repositoryMatches = false,
@@ -420,6 +431,54 @@ public class GitStatus extends AbstractModelObject implements UnprotectedRootAct
         public String getShortDescription() {
             return "commit notification " + sha1;
         }
+    }
+
+	public static class NotifyCommitInfo {
+		private final String ip;
+		private final String hostname;
+		private AtomicInteger totalHits;
+		private Map<String, Integer> hashHitMap;
+		private Map<String, Integer> branchHitMap;
+
+		public NotifyCommitInfo(String ip, String hostname) {
+			this.ip = ip;
+			this.hostname = hostname;
+			totalHits = new AtomicInteger();
+			hashHitMap = new ConcurrentHashMap<String, Integer>();
+			branchHitMap = new ConcurrentHashMap<String, Integer>();
+		}
+
+		public void hit() {
+			totalHits.incrementAndGet();
+		}
+
+		public void hitHash(String hash) {
+			Integer count = hashHitMap.get(hash);
+			if(count == null) {
+				count = 0;
+			}
+			hashHitMap.put(hash, ++count);
+		}
+
+		public void hitBranches(String[] branches) {
+			for(String branch : branches) {
+				Integer count = branchHitMap.get(branch);
+				if(count == null) {
+					count = 0;
+				}
+				branchHitMap.put(branch, ++count);
+			}
+		}
+
+		public String toJson() {
+			JSONObject json = new JSONObject();
+			json.put("hashHitMap", JSONObject.fromObject(hashHitMap));
+			json.put("branchHitMap", JSONObject.fromObject(branchHitMap));
+			json.put("totalHits", totalHits.get());
+			json.put("ipAddress", ip);
+			json.put("hostname", hostname);
+			return json.toString();
+		}
     }
 
     private static final Logger LOGGER = Logger.getLogger(GitStatus.class.getName());
